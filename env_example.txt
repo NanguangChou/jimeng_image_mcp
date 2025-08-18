@@ -1,0 +1,25 @@
+# 即梦图片生成 MCP 服务器环境配置示例
+# 复制此文件为 .env 并填入实际值
+
+# 即梦API服务器地址 (默认为本地地址)
+JIMENG_API_BASE=http://localhost:8001
+
+# 即梦API会话ID (必须设置)
+# 从即梦API获取的认证session_id
+JIMENG_SESSION_ID=your_session_id_here
+
+# 可选配置
+# 默认模型
+DEFAULT_MODEL=jimeng-3.0
+
+# 默认图片尺寸
+DEFAULT_WIDTH=1024
+DEFAULT_HEIGHT=1024
+
+# 默认采样强度
+DEFAULT_SAMPLE_STRENGTH=0.5
+
+# API请求超时时间 (秒)
+REQUEST_TIMEOUT=120
+
+

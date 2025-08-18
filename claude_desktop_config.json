@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "jimeng-image": {
+      "command": "python",
+      "args": [
+        "F:\\cursor_project\\mcp_jm_image\\mcp_server\\jimeng_image_server.py"
+      ],
+      "env": {
+        "JIMENG_SESSION_ID": "your_session_id_here"
+      }
+    }
+  }
+}
+
+
