@@ -10,6 +10,7 @@
 - 🚀 **MCP兼容**: 可与所有支持MCP的AI客户端集成
 - 📝 **智能提示**: 内置提示词优化建议和最佳实践
 - 🔄 **批量生成**: 每次调用返回4张不同的图片供选择
+- ☁️ **腾讯云存储**: 支持自动上传到腾讯云对象存储，确保图片持久性
 
 ## 安装要求
 
@@ -40,6 +41,57 @@ cp env_example.txt .env
 ```
 JIMENG_SESSION_ID=your_actual_session_id_here
 ```
+
+### 腾讯云对象存储配置（可选）
+
+如果需要将生成的图片自动上传到腾讯云对象存储，可以配置以下环境变量：
+
+```
+# 腾讯云COS配置
+TENCENT_CLOUD_SECRET_ID=your_tencent_cloud_secret_id
+TENCENT_CLOUD_SECRET_KEY=your_tencent_cloud_secret_key
+TENCENT_COS_REGION=ap-beijing
+TENCENT_COS_BUCKET=jimeng-images
+TENCENT_COS_DOMAIN=your-custom-domain.com
+```
+
+**配置说明：**
+- `TENCENT_CLOUD_SECRET_ID`: 腾讯云API密钥ID（必填）
+- `TENCENT_CLOUD_SECRET_KEY`: 腾讯云API密钥Key（必填）
+- `TENCENT_COS_REGION`: COS存储桶地域，默认ap-beijing
+- `TENCENT_COS_BUCKET`: COS存储桶名称，默认jimeng-images
+- `TENCENT_COS_DOMAIN`: 自定义域名（可选），如不设置则使用默认COS域名
+
+**注意：** 配置腾讯云COS后，生成的图片会自动上传到腾讯云，返回腾讯云的图片链接，确保图片的持久性和访问速度。
+
+### 腾讯云COS功能测试
+
+配置完成后，可以运行测试脚本验证腾讯云COS功能：
+
+```bash
+python test_cos_upload.py
+```
+
+测试脚本会检查：
+1. 环境变量配置是否正确
+2. 腾讯云COS SDK是否已安装
+3. 能否成功连接到腾讯云COS
+4. 上传功能是否正常工作
+
+### 腾讯云COS SDK最新特性演示
+
+运行示例脚本查看最新的SDK功能：
+
+```bash
+python cos_examples.py
+```
+
+演示内容包括：
+- 异步文件上传
+- 从URL上传文件
+- 对象列表管理
+- 预签名URL生成
+- 对象删除操作
 
 ### 3. 启动服务器
 
@@ -182,6 +234,19 @@ A: 每次调用只能指定一个尺寸，但会返回4张相同尺寸的不同�
 
 ### Q: 图片链接的有效期是多久？
 A: 图片链接可能有时效性，建议及时下载保存满意的图片。
+
+### Q: 腾讯云COS上传失败怎么办？
+A: 检查以下几点：
+1. 腾讯云API密钥是否正确且有效
+2. 存储桶是否存在且有访问权限
+3. 网络连接是否正常
+4. 运行 `python test_cos_upload.py` 进行详细诊断
+
+### Q: 如何获取腾讯云COS的API密钥？
+A: 登录腾讯云控制台，进入"访问管理" -> "API密钥管理"，创建或查看SecretId和SecretKey。
+
+### Q: 腾讯云COS配置是可选的吗？
+A: 是的，腾讯云COS配置是可选的。如果不配置，图片将使用原始的即梦API链接。配置后会自动上传到腾讯云COS并返回腾讯云的链接。
 
 ## 技术支持
 

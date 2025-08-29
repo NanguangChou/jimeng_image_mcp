@@ -1,5 +1,7 @@
 mcp>=1.0.0
 httpx>=0.27.0
 python-dotenv>=1.0.0
+cos-python-sdk-v5>=1.9.25
+requests>=2.31.0
 
 

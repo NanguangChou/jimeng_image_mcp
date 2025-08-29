@@ -22,4 +22,23 @@ DEFAULT_SAMPLE_STRENGTH=0.5
 # API请求超时时间 (秒)
 REQUEST_TIMEOUT=120
 
+# 腾讯云对象存储配置 (可选)
+# 如需自动上传图片到腾讯云COS，请配置以下参数
+
+# 腾讯云API密钥ID
+TENCENT_CLOUD_SECRET_ID=your_tencent_cloud_secret_id
+
+# 腾讯云API密钥Key
+TENCENT_CLOUD_SECRET_KEY=your_tencent_cloud_secret_key
+
+# COS存储桶地域 (默认: ap-guangzhou)
+# 常用地域: ap-beijing(北京), ap-shanghai(上海), ap-guangzhou(广州), ap-singapore(新加坡)
+TENCENT_COS_REGION=ap-guangzhou
+
+# COS存储桶名称 (默认: jimeng-images)
+TENCENT_COS_BUCKET=jimeng-images
+
+# 自定义域名 (可选，如不设置则使用默认COS域名)
+TENCENT_COS_DOMAIN=your-custom-domain.com
+
 

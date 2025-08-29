@@ -9,10 +9,19 @@ import asyncio
 import json
 import os
 import sys
-from typing import Any, Dict, List
+import uuid
+from typing import Any, Dict, List, Optional
 import httpx
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
+
+# 腾讯云COS相关导入
+try:
+    from qcloud_cos import CosConfig, CosS3Client
+    from qcloud_cos.cos_exception import CosServiceError, CosClientError
+    TENCENT_COS_AVAILABLE = True
+except ImportError:
+    TENCENT_COS_AVAILABLE = False
 
 # 加载环境变量
 load_dotenv()
@@ -23,15 +32,23 @@ mcp = FastMCP("jimeng-image-generator")
 # 常量配置 (可通过环境变量覆盖)
 JIMENG_API_BASE = os.getenv("JIMENG_API_BASE", "http://localhost:8001")
 JIMENG_SESSION_ID = os.getenv("JIMENG_SESSION_ID")
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "jimeng-3.0")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "jimeng-3.1")
 DEFAULT_WIDTH = int(os.getenv("DEFAULT_WIDTH", "1024"))
 DEFAULT_HEIGHT = int(os.getenv("DEFAULT_HEIGHT", "1024"))
 DEFAULT_SAMPLE_STRENGTH = float(os.getenv("DEFAULT_SAMPLE_STRENGTH", "0.5"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "120000"))
 
+# 腾讯云COS配置
+TENCENT_CLOUD_SECRET_ID = os.getenv("TENCENT_CLOUD_SECRET_ID")
+TENCENT_CLOUD_SECRET_KEY = os.getenv("TENCENT_CLOUD_SECRET_KEY")
+TENCENT_COS_REGION = os.getenv("TENCENT_COS_REGION", "ap-guangzhou")
+TENCENT_COS_BUCKET = os.getenv("TENCENT_COS_BUCKET", "jimeng-images")
+TENCENT_COS_DOMAIN = os.getenv("TENCENT_COS_DOMAIN", "")
+
 # 可用模型列表
 AVAILABLE_MODELS = [
     "jimeng-3.0",
+    "jimeng-3.1",
     "jimeng-2.1", 
     "jimeng-2.0-pro",
     "jimeng-2.0",
@@ -39,7 +56,7 @@ AVAILABLE_MODELS = [
     "jimeng-xl-pro"
 ]
 
-async def make_jimeng_request(url: str, data: Dict[str, Any], session_id: str) -> Dict[str, Any] | None:
+async def make_jimeng_request(url: str, data: Dict[str, Any], session_id: str) -> Optional[Dict[str, Any]]:
     """向即梦API发送请求"""
     headers = {
         "Authorization": f"Bearer {session_id}",
@@ -57,6 +74,135 @@ async def make_jimeng_request(url: str, data: Dict[str, Any], session_id: str) -
             return {"error": f"API请求失败: {e.response.status_code} - {e.response.text}"}
         except Exception as e:
             return {"error": f"请求发生错误: {str(e)}"}
+
+async def download_image_async(image_url: str) -> Optional[bytes]:
+    """异步下载图片"""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(image_url)
+            response.raise_for_status()
+            return response.content
+    except Exception as e:
+        print(f"下载图片失败: {str(e)}")
+        return None
+
+def get_file_extension_from_url(url: str) -> str:
+    """从URL中提取文件扩展名"""
+    try:
+        # 尝试从URL路径中提取扩展名
+        path = url.split('?')[0]  # 移除查询参数
+        filename = path.split('/')[-1]
+        if '.' in filename:
+            return filename.split('.')[-1].lower()
+    except Exception:
+        pass
+    
+    # 默认返回png
+    return "png"
+
+def sanitize_filename(prompt: str, max_length: int = 50) -> str:
+    """清理提示词用于文件名"""
+    # 移除或替换不安全的字符
+    safe_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_ ')
+    safe_prompt = ''.join(c for c in prompt if c in safe_chars)
+    
+    # 限制长度
+    if len(safe_prompt) > max_length:
+        safe_prompt = safe_prompt[:max_length]
+    
+    # 替换空格为下划线
+    safe_prompt = safe_prompt.replace(' ', '_')
+    
+    # 确保不为空
+    if not safe_prompt:
+        safe_prompt = "image"
+    
+    return safe_prompt
+
+async def upload_to_tencent_cos(image_url: str, prompt: str) -> Optional[str]:
+    """
+    将图片上传到腾讯云对象存储
+    
+    Args:
+        image_url: 原始图片URL
+        prompt: 图片描述，用于生成文件名
+    
+    Returns:
+        腾讯云COS的图片URL，如果上传失败返回None
+    """
+    if not TENCENT_COS_AVAILABLE:
+        print("腾讯云COS SDK未安装")
+        return None
+    
+    if not TENCENT_CLOUD_SECRET_ID or not TENCENT_CLOUD_SECRET_KEY:
+        print("腾讯云COS配置不完整")
+        return None
+    
+    try:
+        # 配置腾讯云COS
+        config = CosConfig(
+            Region=TENCENT_COS_REGION,
+            SecretId=TENCENT_CLOUD_SECRET_ID,
+            SecretKey=TENCENT_CLOUD_SECRET_KEY,
+            Scheme='https'  # 明确指定使用HTTPS
+        )
+        client = CosS3Client(config)
+        
+        # 异步下载图片
+        image_data = await download_image_async(image_url)
+        if not image_data:
+            print("图片下载失败")
+            return None
+        
+        # 生成文件名
+        file_extension = get_file_extension_from_url(image_url)
+        safe_prompt = sanitize_filename(prompt)
+        unique_id = uuid.uuid4().hex[:8]
+        file_name = f"jimeng/{safe_prompt}_{unique_id}.{file_extension}"
+        
+        # 确定Content-Type
+        content_type_map = {
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'webp': 'image/webp',
+            'bmp': 'image/bmp'
+        }
+        content_type = content_type_map.get(file_extension, 'image/jpeg')
+        
+        # 上传到腾讯云COS
+        result = client.put_object(
+            Bucket=TENCENT_COS_BUCKET,
+            Body=image_data,
+            Key=file_name,
+            ContentType=content_type,
+            StorageClass='STANDARD'  # 明确指定存储类型
+        )
+        
+        # 验证上传结果
+        if not result or not result.get('ETag'):
+            print("上传结果验证失败")
+            return None
+        
+        # 构建返回URL
+        if TENCENT_COS_DOMAIN:
+            cos_url = f"{TENCENT_COS_DOMAIN}/{file_name}"
+        else:
+            cos_url = f"https://{TENCENT_COS_BUCKET}.cos.{TENCENT_COS_REGION}.myqcloud.com/{file_name}"
+        
+        print(f"腾讯云COS上传成功: {cos_url}")
+        return cos_url
+        
+    except CosServiceError as e:
+        print(f"腾讯云COS服务错误: {e.get_error_code()} - {e.get_error_msg()}")
+        return None
+    except CosClientError as e:
+        print(f"腾讯云COS客户端错误: {str(e)}")
+        return None
+    except Exception as e:
+        print(f"腾讯云COS上传异常: {str(e)}")
+        return None
 
 @mcp.tool()
 async def generate_images(
@@ -132,20 +278,44 @@ async def generate_images(
     # 格式化响应，提取关键信息
     if "data" in result and len(result["data"]) > 0:
         formatted_result = {
-            "success": True,
-            "generated_at": result.get("created", "未知时间"),
+            #"success": True,
+            #"generated_at": result.get("created", "未知时间"),
             "model_used": model,
-            "prompt_used": prompt,
-            "image_count": len(result["data"]),
+            #"prompt_used": prompt,
+            #"image_count": len(result["data"]),
             "images": []
         }
         
         for i, img_data in enumerate(result["data"], 1):
-            formatted_result["images"].append({
-                "index": i,
-                "url": img_data.get("url", ""),
+            if i != 1 :
+                continue
+            
+            original_url = img_data.get("url", "")
+            
+            # 检查是否配置了腾讯云COS，如果配置了则上传到腾讯云
+            final_url = original_url
+            cos_url = None
+            
+            if TENCENT_CLOUD_SECRET_ID and TENCENT_COS_AVAILABLE:
+                cos_url = await upload_to_tencent_cos(original_url, prompt)
+                if cos_url:
+                    final_url = cos_url
+            
+            image_info = {
+                #"index": i,
+                "url": final_url,
                 "description": f"基于提示词'{prompt}'生成的图片 #{i}"
-            })
+            }
+            
+            # 如果上传到了腾讯云COS，添加相关信息
+            if cos_url:
+                #image_info["original_url"] = original_url
+                image_info["cos_url"] = cos_url
+                #image_info["storage"] = "tencent_cos"
+            else:
+                image_info["storage"] = "original"
+            
+            formatted_result["images"].append(image_info)
         
         return json.dumps(formatted_result, ensure_ascii=False, indent=2)
     else:
@@ -165,9 +335,13 @@ async def list_available_models() -> str:
     models_info = {
         "available_models": [
             {
-                "name": "jimeng-3.0",
+                "name": "jimeng-3.1",
                 "description": "最新版本，图片质量最高，推荐使用",
                 "is_default": True
+            },
+            {
+                "name": "jimeng-3.0",
+                "description": "次新版本"
             },
             {
                 "name": "jimeng-2.1", 
