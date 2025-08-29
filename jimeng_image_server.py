@@ -218,7 +218,7 @@ async def generate_images(
     
     Args:
         prompt: 图片描述提示词，必填。例如："少女祈祷中..."、"现代办公室背景"、"产品展示图"等
-        model: 模型选择，可选值：jimeng-3.0(默认)、jimeng-2.1、jimeng-2.0-pro、jimeng-2.0、jimeng-1.4、jimeng-xl-pro
+        model: 模型选择，可选值：jimeng-3.1(默认)、jimeng-2.1、jimeng-2.0-pro、jimeng-2.0、jimeng-1.4、jimeng-xl-pro
         negative_prompt: 反向提示词，描述不想要的元素，默认为空
         width: 图片宽度，默认1024像素
         height: 图片高度，默认1024像素  
